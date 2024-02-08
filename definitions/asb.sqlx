@@ -1,0 +1,164 @@
+-- Config blocks allow you to configure, document, and test your data assets.
+config {
+  type: "table", // Creates a view in BigQuery. Try changing to "table" instead.
+  columns: {
+    test: "superfast greys", // Column descriptions are pushed to BigQuery.
+  }
+}
+WITH
+  Fastershire AS (
+  SELECT
+    a.*,
+    UPPER(REPLACE(a.PS_PostCode," ","")) AS Postcode,
+    b.product
+  FROM
+    `dcms-datalake-staging.Gigaclear_Greys_Testing.fastershire_greys_dec23_2_UPRNs_fixed` a
+  LEFT JOIN
+    `bduk-analysis-workspace.reporting.gigabit_premises_passed_deduped_materialised`b
+  ON
+    SAFE_CAST(a.UPRN AS INT64) = b.uprn
+  WHERE
+    product IS NULL
+    AND a.freq_unique_combo = 1
+    AND a.UPRN != "NA"
+    AND a.RFS_Date < "2023-10-01"),
+
+  f20_pd_pm AS (
+    SELECT 
+      UPPER(REPLACE(postcode," ","")) as postcode,
+      AVG(average_percentile) as average_percentile
+    FROM
+      `dcms-datalake-staging.Tableau_Views.premises_master_tableau`
+    GROUP BY 
+      1),
+
+  Greys AS (
+  SELECT
+    contract_id,
+    SUM(premise_count) AS premises_passed
+  FROM
+    `bduk-analysis-workspace.reporting.gigabit_premises_passed_deduped_materialised`
+  WHERE
+    product = "Superfast"
+    AND sub30_flag = FALSE
+  GROUP BY
+    1
+
+  UNION ALL
+
+  SELECT
+    "Fastershire" AS contract_id,
+    COUNT(UPRN)
+  FROM
+    Fastershire
+  WHERE
+    freq_unique_combo = 1 ),
+
+  f20 AS (
+  SELECT
+    a.uprn,
+    UPPER(REPLACE(a.postcode," ","")) as postcode,
+    a.contract_id,
+    SUM(a.premise_count) AS premises_passed,
+    COALESCE(b.average_percentile,c.average_percentile) AS f20,
+  IF
+    (COALESCE(b.average_percentile,c.average_percentile) IS NULL, "f20 not matched","f20 matched") AS f20_matched_flag,
+
+  IF
+    (COALESCE(b.average_percentile,c.average_percentile)>=0.8, TRUE, FALSE) AS f20_flag
+  FROM
+    `bduk-analysis-workspace.reporting.gigabit_premises_passed_deduped_materialised` a
+  LEFT JOIN
+    `dcms-datalake-staging.Tableau_Views.premises_master_tableau` b
+  USING
+    (uprn)
+  LEFT JOIN 
+    f20_pd_pm c
+  ON
+    UPPER(REPLACE(a.postcode," ","")) = c.postcode
+  WHERE
+    product = "Superfast"
+    AND sub30_flag = FALSE
+
+  GROUP BY
+    1,
+    2,
+    3,
+    5,
+    6,
+    7
+
+
+  UNION ALL
+
+  SELECT
+    SAFE_CAST(a.uprn AS INT64) AS uprn,
+    UPPER(REPLACE(a.postcode," ","")) as postcode,
+    "Fastershire" AS contract_id,
+    1 AS premises_passed,
+    COALESCE(b.average_percentile,c.average_percentile) AS f20,
+  IF
+    (COALESCE(b.average_percentile,c.average_percentile) IS NULL, "f20 not matched","f20 matched") AS f20_matched_flag,
+
+  IF
+    (COALESCE(b.average_percentile,c.average_percentile)>=0.8, TRUE, FALSE) AS f20_flag
+  FROM
+    Fastershire a
+  LEFT JOIN
+    `dcms-datalake-staging.Tableau_Views.premises_master_tableau` b
+  ON
+    SAFE_CAST(a.uprn AS INT64) = b.uprn
+  LEFT JOIN 
+    f20_pd_pm c
+  ON
+    UPPER(REPLACE(a.postcode," ","")) = c.postcode
+ 
+  GROUP BY
+    1,
+    2,
+    3,
+    5,
+    6,
+    7),
+
+  f20_matched_grouped AS (
+  SELECT
+    contract_id,
+    f20_matched_flag,
+    SUM(premises_passed) AS premises_passed
+  FROM
+    f20
+  WHERE
+    f20_matched_flag = "f20 matched"
+  GROUP BY
+    1,
+    2 ),
+
+  f20_grouped AS (
+  SELECT
+    contract_id,
+    f20_flag,
+    SUM(premises_passed) AS premises_passed
+  FROM
+    f20
+  WHERE
+    f20_flag = TRUE
+  GROUP BY
+    1,
+    2 )
+
+SELECT
+  Greys.contract_id,
+  Greys.premises_passed,
+  f20_matched_grouped.premises_passed AS Matched_to_f20,
+  f20_grouped.premises_passed AS f20
+FROM
+  Greys
+LEFT JOIN
+  f20_matched_grouped
+USING
+  (contract_id)
+LEFT JOIN
+  f20_grouped
+USING
+  (contract_id)
