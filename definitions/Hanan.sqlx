@@ -1,0 +1,7 @@
+config {
+    type : "table"
+}
+
+Select "a" AS id, 1 as value 
+
+
