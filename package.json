@@ -1,0 +1,6 @@
+{
+  "name": "s_di_dataform_test",
+  "dependencies": {
+    "@dataform/core": "2.8.3"
+  }
+}
