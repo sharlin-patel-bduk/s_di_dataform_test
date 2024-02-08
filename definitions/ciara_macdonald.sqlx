@@ -1,0 +1,12 @@
+
+config {
+  type: "view", 
+  columns: {
+    my_favourite_number: "A description for the faovourite number column", 
+
+  }
+}
+
+
+
+SELECT 6 as my_favourite_number
