@@ -1,0 +1,9 @@
+config {
+    type : "table"
+}
+
+SELECT "a" AS id, 1 AS value
+
+UNION ALL 
+
+SELECT "b" AS id, 2 AS value
