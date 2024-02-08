@@ -1,0 +1,4 @@
+config {
+    type: "view",
+    columns: {frequency: "none of this is real"},
+}
